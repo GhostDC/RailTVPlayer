@@ -17,6 +17,7 @@ namespace RailTVPlayer
     public partial class Form1 : Form
     {
         SerialPort comm = new SerialPort();
+        Thread t_TimerLoop;
 
         public Form1()
         {
@@ -27,6 +28,9 @@ namespace RailTVPlayer
         private void Form1_Load(object sender, EventArgs e)
         {
             OpenPort();
+
+            t_TimerLoop = new Thread(TimerLoop);
+            t_TimerLoop.Start();
         }
 
         //开启端口
@@ -39,6 +43,18 @@ namespace RailTVPlayer
             comm.StopBits = StopBits.One;
             comm.Parity = Parity.None;
             comm.Open();
+        }
+
+        //循环读取输入数据
+        void TimerLoop()
+        {
+            ReadDI();
+        }
+
+        //对输入的数据进行读取
+        void ReadDI()
+        {
+
         }
     }
 }
