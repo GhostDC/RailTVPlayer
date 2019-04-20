@@ -16,10 +16,13 @@ namespace RailTVPlayer
 {
     public partial class Form1 : Form
     {
+        string currentPath = Application.StartupPath;
         SerialPort comm = new SerialPort();
         Thread t_TimerLoop;
         int txtAddr;
         int diNum;
+        int currentNum = 0;
+        int currentNumB = 0;
 
         public Form1()
         {
@@ -55,11 +58,69 @@ namespace RailTVPlayer
             TimerLoop();
         }
 
-        //对输入的数据进行读取
+        //对输入的数据进行读取 并计算相对应的端口号
         void ReadDI()
         {
             byte[] info = CModbusDll.ReadDI(Convert.ToInt16(txtAddr), Convert.ToInt16(diNum));
             byte[] rst = SendInfo(info);
+            try
+            {
+                if(comm.IsOpen)
+                {
+                    if (rst.Length <= 1)
+                    {
+                        if (rst[0] != 0)
+                        {
+                            currentNumB = rst[0];
+                            currentNum = BinToDec(currentNumB);
+                            this.Invoke(new EventHandler(delegate
+                            {
+                                Play(currentNum);
+                            }));
+                        }
+                    }
+                    else
+                    {
+                        if (rst[0] == 0 && rst[1] != 0)
+                        {
+                            currentNumB = rst[1];
+                            currentNum = BinToDec(currentNumB) + 8;
+                            this.Invoke(new EventHandler(delegate
+                            {
+                                Play(currentNum);
+                            }));
+                        }
+                    }
+                    
+                }
+            }
+            catch
+            {
+                MessageBox.Show("端口未打开请检查端口是否正确!");
+            }
+        }
+
+        //对所计算出的文件进行播放
+        void Play(int MovieNum)
+        {
+            if(MovieNum!=0)
+            {
+                axShockwaveFlash1.Movie = currentPath + "\\" + MovieNum + ".swf";
+            }
+        }
+
+        //将二进制数转换为10进制数
+        int BinToDec(int currentNumB)
+        {
+            if (currentNumB > 2)
+            {
+                currentNum = Convert.ToInt32(Math.Log(currentNumB, 2)-1);
+                return currentNum;
+            }
+            else
+            {
+                return currentNumB;
+            }
         }
 
         //向继电器发送数据
@@ -150,6 +211,12 @@ namespace RailTVPlayer
                     break;
             }
             return null;
+        }
+
+        //窗口关闭 释放线程
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            t_TimerLoop.Abort();
         }
     }
 }
