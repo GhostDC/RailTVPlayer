@@ -1,12 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 using System.IO;
@@ -16,11 +9,14 @@ namespace RailTVPlayer
 {
     public partial class Form1 : Form
     {
-        string currentPath = Application.StartupPath;
+        static string currentPath = Application.StartupPath;
+        string MoviePath;
+        IniFiles iniPath = new IniFiles(currentPath + "Config.ini");
         SerialPort comm = new SerialPort();
         Thread t_TimerLoop;
         int txtAddr;
         int diNum;
+        string portName;
         int currentNum = 0;
         int currentNumB = 0;
 
@@ -32,7 +28,21 @@ namespace RailTVPlayer
         //窗口加载
         private void Form1_Load(object sender, EventArgs e)
         {
-            OpenPort();
+            if(iniPath.ExistIniFile())
+            {
+                portName = iniPath.iniReadValue("Config", "PortName");
+                txtAddr = Convert.ToInt32(iniPath.iniReadValue("Config", "PortAddr"));
+                diNum = Convert.ToInt32(iniPath.iniReadValue("Config", "DataInputNum"));
+                axShockwaveFlash1.Movie = iniPath.iniReadValue("LastFile", "FilePath");
+
+                OpenPort();
+            }
+            else
+            {
+                iniPath.IniWriteValue("Config", "PortName", "Com3");
+                iniPath.IniWriteValue("Config", "PortAddr", "254");
+                iniPath.IniWriteValue("Config", "DataInputNum", "10");
+            }
 
             t_TimerLoop = new Thread(TimerLoop);
             t_TimerLoop.Start();
@@ -41,7 +51,7 @@ namespace RailTVPlayer
         //开启端口
         void OpenPort()
         {
-            comm.PortName = "COM3";//定义串口号
+            comm.PortName = portName;//定义串口号
             comm.BaudRate = 9600;//波特率
             comm.DataBits = 8;//数据位
             comm.ReadBufferSize = 4096;
@@ -54,6 +64,7 @@ namespace RailTVPlayer
         void TimerLoop()
         {
             ReadDI();
+            Thread.Sleep(50);
 
             TimerLoop();
         }
@@ -63,49 +74,53 @@ namespace RailTVPlayer
         {
             byte[] info = CModbusDll.ReadDI(Convert.ToInt16(txtAddr), Convert.ToInt16(diNum));
             byte[] rst = SendInfo(info);
-            try
+            if (comm.IsOpen)
             {
-                if(comm.IsOpen)
+                if (rst.Length <= 1)
                 {
-                    if (rst.Length <= 1)
+                    if (rst[0] != 0)
                     {
-                        if (rst[0] != 0)
+                        currentNumB = Convert.ToInt32(rst[0]);
+                        currentNum = BinToDec(currentNumB);
+                        this.Invoke(new EventHandler(delegate
                         {
-                            currentNumB = rst[0];
-                            currentNum = BinToDec(currentNumB);
-                            this.Invoke(new EventHandler(delegate
-                            {
-                                Play(currentNum);
-                            }));
-                        }
+                            Play(currentNum);
+                        }));
                     }
-                    else
+                }
+                else
+                {
+                    if (rst[0] != 0)
                     {
-                        if (rst[0] == 0 && rst[1] != 0)
-                        {
-                            currentNumB = rst[1];
-                            currentNum = BinToDec(currentNumB) + 8;
-                            this.Invoke(new EventHandler(delegate
-                            {
-                                Play(currentNum);
-                            }));
-                        }
+                        currentNumB = Convert.ToInt32(rst[0]);
+                        currentNum = BinToDec(currentNumB);
                     }
-                    
+                    else if (rst[0] == 0 && rst[1] != 0)
+                    {
+                        currentNumB = Convert.ToInt32(rst[1]);
+                        currentNum = BinToDec(currentNumB);
+                        currentNum += 8;
+                    }
+                    this.Invoke(new EventHandler(delegate
+                    {
+                        Play(currentNum);
+                    }));
+
                 }
             }
-            catch
+            else
             {
-                MessageBox.Show("端口未打开请检查端口是否正确!");
+                MessageBox.Show("请设置正确的COM端口");
             }
         }
 
         //对所计算出的文件进行播放
         void Play(int MovieNum)
         {
+            label1.Text = Convert.ToString(MovieNum);
             if(MovieNum!=0)
             {
-                axShockwaveFlash1.Movie = currentPath + "\\" + MovieNum + ".swf";
+                axShockwaveFlash1.Movie = currentPath + "\\movie\\" + MovieNum + ".swf";
             }
         }
 
@@ -114,7 +129,7 @@ namespace RailTVPlayer
         {
             if (currentNumB > 2)
             {
-                currentNum = Convert.ToInt32(Math.Log(currentNumB, 2)-1);
+                currentNum = Convert.ToInt32(Math.Log(currentNumB, 2) + 1);
                 return currentNum;
             }
             else
@@ -216,6 +231,11 @@ namespace RailTVPlayer
         //窗口关闭 释放线程
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
+            if (currentNum != 0)
+            {
+                MoviePath = currentPath + "\\movie\\" + currentNum + ".swf";
+                iniPath.IniWriteValue("LastFile", "FilePath", MoviePath);
+            }
             t_TimerLoop.Abort();
         }
     }
